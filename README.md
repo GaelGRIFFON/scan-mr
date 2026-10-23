@@ -1,25 +1,17 @@
 # ScanClient
 
-Scanne en continu (OCR ML Kit, hors ligne) les codes client `<magasin><n° client>` sur des documents, et les enregistre.
+App Android qui scanne (OCR hors ligne) les références client `<préfixe magasin><n° client>` sur les courriers retournés.
 
-## Lancer
-1. Android Studio (Ladybug ou plus récent) → *Open* sur ce dossier, laisser Gradle synchroniser
-   (si besoin, accepter la mise à jour des versions proposée par l'IDE).
-2. Brancher le téléphone (débogage USB) → *Run*.
-3. Tests du parseur : `./gradlew test` ou clic droit sur `CodeParserTest`.
+## Fonctionnement
+- **Magasins** : liste de préfixes configurable (écran « Magasins »). Seuls ces préfixes + des chiffres sont enregistrés. Le n° client fait 6 ou 7 chiffres par défaut, réglable par magasin.
+- **Tolérance OCR** : O/0, I/1, S/5, B/8, Z/2… et LYON06 lu « LYONDB » sont corrigés. Le code enregistré est toujours celui de la liste.
+- **Magasin inconnu** : message d'info pendant le scan (sans bloquer), avec bouton « Ajouter » pour l'ajouter à la volée.
+- **Sessions** : « Nouvelle session » → scan → « Terminer ». Les sessions passées se retrouvent sur l'accueil : export CSV, renommage, reprise, suppression.
+- Export CSV `;` UTF-8 : `session;horodatage;magasin;client;code` (Excel supprime les zéros de tête de la colonne client ; la colonne code est sûre).
 
-## Utilisation
-- Passer la caméra devant le document : le code **le plus proche du centre** est lu, validé après 2 images identiques,
-  puis bip + vibration + bandeau vert. Pas de bouton.
-- Bandeau orange = déjà scanné (non enregistré en double).
-- Toucher une ligne = corriger magasin / n° client. Glisser vers la gauche = supprimer (annulable).
-- *Exporter CSV* : partage un fichier `;` UTF-8 (colonnes horodatage, magasin, client, code).
-  Excel supprime les zéros de tête de la colonne `client` ; la colonne `code` est sûre.
+## Compilation (GitHub Actions)
+1. Lancer une fois le workflow **keystore** (génère `app/keystore/scanclient.jks`, à committer) : les mises à jour s'installent ensuite par-dessus l'ancienne version.
+2. Chaque push sur `main` lance **build** → APK dans les artefacts.
 
-## Apprentissage des magasins
-La liste des magasins connus = les magasins distincts présents dans les scans. Le premier scan d'un magasin est découpé par
-heuristique (n° client = 7 derniers chiffres, ou toute la fin numérique si plus courte) ; si le découpage est faux,
-corrige-le une fois : les scans suivants l'utiliseront (et les erreurs OCR 0/O, 1/I, 5/S, 8/B du préfixe sont corrigées).
-
-## Réglages
-`CodeParser.kt` : longueurs min/max, longueur max du n° client. `CodeAnalyzer.REQUIRED` : nb d'images identiques avant validation.
+## Tests
+`./gradlew test` (nécessite Gradle ≥ 8.9) : `CodeParserTest`.

@@ -16,6 +16,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -36,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -58,12 +61,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -71,27 +71,25 @@ import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+
+private data class AddStoreRequest(val prefix: String, val client: String?)
 
 @Composable
-fun ScanApp(vm: ScanViewModel) {
+fun ScanScreen(vm: ScanViewModel) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val snack = remember { SnackbarHostState() }
     val scans by vm.scans.collectAsState()
     val status by vm.status.collectAsState()
-    var editing by remember { mutableStateOf<ScanEntity?>(null) }
-    var confirmClear by remember { mutableStateOf(false) }
+    val tray by vm.unknownTray.collectAsState()
+    val session by vm.currentSession.collectAsState()
+    val recap by vm.recap.collectAsState()
 
-    // Le dernier scan est en haut de la liste (juste sous la caméra) : on remonte au début à chaque nouveau code
-    val listState = rememberLazyListState()
-    val lastId = scans.firstOrNull()?.id
-    LaunchedEffect(lastId) {
-        if (scans.isNotEmpty()) listState.animateScrollToItem(0)
-    }
+    var editing by remember { mutableStateOf<ScanEntity?>(null) }
+    var addStore by remember { mutableStateOf<AddStoreRequest?>(null) }
+    var confirmEnd by remember { mutableStateOf(false) }
 
     var granted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
@@ -99,23 +97,51 @@ fun ScanApp(vm: ScanViewModel) {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     LaunchedEffect(Unit) { if (!granted) permission.launch(Manifest.permission.CAMERA) }
 
+    // Le plus récent est en haut (sous la caméra) : on remonte au début à chaque nouveau code
+    val listState = rememberLazyListState()
+    val newestId = scans.firstOrNull()?.id
+    LaunchedEffect(newestId) {
+        if (scans.isNotEmpty()) listState.animateScrollToItem(0)
+    }
+
     Scaffold(snackbarHost = { SnackbarHost(snack) }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             CameraSection(vm, granted, status)
+
+            if (tray.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().background(Ui.InfoBg).horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    tray.forEach { u ->
+                        Text("Magasin ${u.prefix} inconnu", color = Ui.Info, fontWeight = FontWeight.Bold)
+                        TextButton(onClick = { addStore = AddStoreRequest(u.prefix, u.client) }) { Text("Ajouter") }
+                        TextButton(onClick = { vm.dismissUnknown(u.prefix) }) { Text("Ignorer", color = Ui.Muted) }
+                    }
+                }
+            }
 
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("${scans.size} code(s)", style = MaterialTheme.typography.titleMedium)
-                Row {
-                    TextButton(enabled = scans.isNotEmpty(), onClick = { confirmClear = true }) { Text("Vider") }
-                    TextButton(
-                        enabled = scans.isNotEmpty(),
-                        onClick = { scope.launch { ctx.startActivity(vm.exportIntent()) } },
-                    ) { Text("Exporter CSV") }
+                Column(Modifier.weight(1f)) {
+                    Text(session?.name ?: "", style = MaterialTheme.typography.labelLarge, color = Ui.Muted)
+                    Text("${scans.size} code(s)", style = MaterialTheme.typography.titleMedium)
                 }
+                TextButton(onClick = { addStore = AddStoreRequest("", null) }) { Text("+ Magasin") }
+                TextButton(onClick = { confirmEnd = true }) { Text("Terminer", color = Ui.Danger) }
+            }
+            if (recap.isNotEmpty()) {
+                Text(
+                    recap.joinToString("  ·  ") { "${it.store} ×${it.n}" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ui.Muted,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp),
+                )
             }
             HorizontalDivider()
 
@@ -123,13 +149,13 @@ fun ScanApp(vm: ScanViewModel) {
                 items(scans, key = { it.id }) { e ->
                     ScanRow(
                         e,
-                        isLast = e.id == lastId,
+                        isLast = e.id == newestId,
                         onClick = { editing = e },
                         onDelete = {
-                            vm.delete(e)
+                            vm.deleteScan(e)
                             scope.launch {
-                                val r = snack.showSnackbar("${e.full} supprimé", "Annuler", duration = androidx.compose.material3.SnackbarDuration.Short)
-                                if (r == SnackbarResult.ActionPerformed) vm.restore(e)
+                                val r = snack.showSnackbar("${e.full} supprimé", "Annuler", duration = SnackbarDuration.Short)
+                                if (r == SnackbarResult.ActionPerformed) vm.restoreScan(e)
                             }
                         },
                     )
@@ -157,18 +183,32 @@ fun ScanApp(vm: ScanViewModel) {
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { vm.update(e, store, client); editing = null }) { Text("Enregistrer") } },
+            confirmButton = { TextButton(onClick = { vm.updateScan(e, store, client); editing = null }) { Text("Enregistrer") } },
             dismissButton = { TextButton(onClick = { editing = null }) { Text("Annuler") } },
         )
     }
 
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text("Tout effacer ?") },
-            text = { Text("Les ${scans.size} codes et la liste des magasins appris seront supprimés. Pense à exporter avant.") },
-            confirmButton = { TextButton(onClick = { vm.clearAll(); confirmClear = false }) { Text("Effacer") } },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Annuler") } },
+    addStore?.let { req ->
+        StoreDialog(
+            title = "Ajouter un magasin",
+            initialPrefix = req.prefix,
+            initialLen = null,
+            hint = if (req.client != null) "Corrigez le préfixe si besoin : le code lu sera enregistré avec." else null,
+            onConfirm = { p, len ->
+                vm.addStore(p, len, req.client)
+                addStore = null
+            },
+            onDismiss = { addStore = null },
+        )
+    }
+
+    if (confirmEnd) {
+        ConfirmDialog(
+            title = "Terminer la session ?",
+            text = "Les ${scans.size} codes sont conservés. Vous pourrez les exporter plus tard depuis l'accueil.",
+            confirmLabel = "Terminer",
+            onConfirm = { vm.endSession(); confirmEnd = false },
+            onDismiss = { confirmEnd = false },
         )
     }
 }
@@ -178,19 +218,25 @@ private fun CameraSection(vm: ScanViewModel, granted: Boolean, status: Status) {
     var camera by remember { mutableStateOf<Camera?>(null) }
     var torch by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxWidth().height(300.dp).background(Color.Black)) {
+    Box(Modifier.fillMaxWidth().height(260.dp).background(Color.Black)) {
         if (granted) {
             CameraPreview(vm, Modifier.fillMaxSize()) { camera = it }
         } else {
-            Text("Autorise la caméra pour scanner", color = Color.White, modifier = Modifier.align(Alignment.Center))
+            Text("Autorisez la caméra pour scanner", color = Color.White, modifier = Modifier.align(Alignment.Center))
         }
 
         // Repère visuel : le code le plus proche du centre est celui qui est pris
         Box(
-            Modifier.align(Alignment.Center).fillMaxWidth(0.85f).height(90.dp)
+            Modifier.align(Alignment.Center).fillMaxWidth(0.85f).height(80.dp)
                 .border(2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(12.dp)),
         )
 
+        FilterChip(
+            selected = false,
+            onClick = { vm.goHome() },
+            label = { Text("‹ Accueil") },
+            modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+        )
         FilterChip(
             selected = torch,
             onClick = { torch = !torch; camera?.cameraControl?.enableTorch(torch) },
@@ -205,9 +251,11 @@ private fun CameraSection(vm: ScanViewModel, granted: Boolean, status: Status) {
 @Composable
 private fun StatusBanner(status: Status, modifier: Modifier) {
     val (text, color) = when (status) {
-        Status.Idle -> "Vise le code client" to Color(0x99000000)
-        is Status.Saved -> (if (status.newStore) "✔ ${status.code} · nouveau magasin" else "✔ ${status.code}") to Color(0xFF2E7D32)
-        is Status.Duplicate -> "Déjà scanné : ${status.code}" to Color(0xFFEF6C00)
+        Status.Idle -> "Placez le code dans le cadre" to Color(0xB3000000)
+        is Status.Saved -> "✔ ${status.code}" to Ui.Success
+        is Status.Duplicate -> "Déjà scanné : ${status.code}" to Ui.Warn
+        is Status.UnknownStore -> "Magasin ${status.prefix} inconnu" to Ui.Info
+        is Status.Uncertain -> "Lecture incertaine (${status.stores.joinToString(" ou ")}) : rapprochez-vous" to Ui.Warn
     }
     Box(modifier.fillMaxWidth().background(color).padding(12.dp), contentAlignment = Alignment.Center) {
         Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
@@ -219,8 +267,14 @@ private fun CameraPreview(vm: ScanViewModel, modifier: Modifier, onCamera: (Came
     val activity = LocalContext.current as ComponentActivity
     val executor = remember { Executors.newSingleThreadExecutor() }
     val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+    val alive = remember { AtomicBoolean(true) }
+    val providerHolder = remember { arrayOfNulls<ProcessCameraProvider>(1) }
+
+    // Quitter l'écran de scan libère la caméra
     DisposableEffect(Unit) {
         onDispose {
+            alive.set(false)
+            providerHolder[0]?.unbindAll()
             executor.shutdown()
             recognizer.close()
         }
@@ -230,7 +284,9 @@ private fun CameraPreview(vm: ScanViewModel, modifier: Modifier, onCamera: (Came
         val previewView = PreviewView(c).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
         val future = ProcessCameraProvider.getInstance(c)
         future.addListener({
+            if (!alive.get()) return@addListener
             val provider = future.get()
+            providerHolder[0] = provider
             val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
             val analysis = ImageAnalysis.Builder()
                 // 1080p minimum : à 640x480 par défaut l'OCR rate les petits caractères
@@ -242,7 +298,12 @@ private fun CameraPreview(vm: ScanViewModel, modifier: Modifier, onCamera: (Came
                 )
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-                .also { it.setAnalyzer(executor, CodeAnalyzer(recognizer, vm::knownStores, vm::onCandidate)) }
+                .also {
+                    it.setAnalyzer(
+                        executor,
+                        CodeAnalyzer(recognizer, vm::storeDefs, vm::onMatch, vm::onUnknown, vm::onAmbiguous),
+                    )
+                }
 
             provider.unbindAll()
             onCamera(provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis))
@@ -263,14 +324,14 @@ private fun ScanRow(e: ScanEntity, isLast: Boolean, onClick: () -> Unit, onDelet
         state = state,
         enableDismissFromStartToEnd = false,
         backgroundContent = {
-            Box(Modifier.fillMaxSize().background(Color(0xFFC62828)).padding(end = 20.dp), contentAlignment = Alignment.CenterEnd) {
+            Box(Modifier.fillMaxSize().background(Ui.Danger).padding(end = 20.dp), contentAlignment = Alignment.CenterEnd) {
                 Text("Supprimer", color = Color.White)
             }
         },
     ) {
         Surface(
             Modifier.fillMaxWidth().clickable(onClick = onClick),
-            color = if (isLast) Color(0xFFE6F4EC) else MaterialTheme.colorScheme.surface,
+            color = if (isLast) Ui.SuccessBg else MaterialTheme.colorScheme.surface,
         ) {
             Row(
                 Modifier.padding(horizontal = 16.dp, vertical = if (isLast) 20.dp else 12.dp),
@@ -278,22 +339,14 @@ private fun ScanRow(e: ScanEntity, isLast: Boolean, onClick: () -> Unit, onDelet
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
-                    if (isLast) {
-                        Text("Dernier scan", style = MaterialTheme.typography.labelLarge, color = Color(0xFF16794A))
-                    }
+                    if (isLast) Text("Dernier scan", style = MaterialTheme.typography.labelLarge, color = Ui.Success)
                     Text(
-                        buildAnnotatedString {
-                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)) { append(e.store) }
-                            withStyle(SpanStyle(fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal)) { append(e.client) }
-                        },
+                        codeText(e.store, e.client, boldClient = isLast),
                         fontFamily = FontFamily.Monospace,
                         fontSize = if (isLast) 30.sp else 18.sp,
                     )
                 }
-                Text(
-                    SimpleDateFormat("dd/MM HH:mm:ss", Locale.FRANCE).format(Date(e.ts)),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                Text(fmtTime(e.ts), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
