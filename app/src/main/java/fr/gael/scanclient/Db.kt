@@ -25,7 +25,7 @@ data class ScanEntity(
 
 @Dao
 interface ScanDao {
-    @Query("SELECT * FROM scans ORDER BY ts DESC")
+    @Query("SELECT * FROM scans ORDER BY ts DESC, id DESC")
     fun observeScans(): Flow<List<ScanEntity>>
 
     /** La liste des magasins connus est dérivée des scans : corriger/supprimer un scan corrige l'apprentissage. */

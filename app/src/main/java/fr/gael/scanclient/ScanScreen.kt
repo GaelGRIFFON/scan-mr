@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -85,6 +86,13 @@ fun ScanApp(vm: ScanViewModel) {
     var editing by remember { mutableStateOf<ScanEntity?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
 
+    // Le dernier scan est en haut de la liste (juste sous la caméra) : on remonte au début à chaque nouveau code
+    val listState = rememberLazyListState()
+    val lastId = scans.firstOrNull()?.id
+    LaunchedEffect(lastId) {
+        if (scans.isNotEmpty()) listState.animateScrollToItem(0)
+    }
+
     var granted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
     }
@@ -111,10 +119,11 @@ fun ScanApp(vm: ScanViewModel) {
             }
             HorizontalDivider()
 
-            LazyColumn(Modifier.weight(1f)) {
+            LazyColumn(Modifier.weight(1f), state = listState) {
                 items(scans, key = { it.id }) { e ->
                     ScanRow(
                         e,
+                        isLast = e.id == lastId,
                         onClick = { editing = e },
                         onDelete = {
                             vm.delete(e)
@@ -244,7 +253,7 @@ private fun CameraPreview(vm: ScanViewModel, modifier: Modifier, onCamera: (Came
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ScanRow(e: ScanEntity, onClick: () -> Unit, onDelete: () -> Unit) {
+private fun ScanRow(e: ScanEntity, isLast: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
     val state = rememberSwipeToDismissBoxState(confirmValueChange = {
         if (it == SwipeToDismissBoxValue.EndToStart) {
             onDelete(); true
@@ -259,20 +268,28 @@ private fun ScanRow(e: ScanEntity, onClick: () -> Unit, onDelete: () -> Unit) {
             }
         },
     ) {
-        Surface(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Surface(
+            Modifier.fillMaxWidth().clickable(onClick = onClick),
+            color = if (isLast) Color(0xFFE6F4EC) else MaterialTheme.colorScheme.surface,
+        ) {
             Row(
-                Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                Modifier.padding(horizontal = 16.dp, vertical = if (isLast) 20.dp else 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    buildAnnotatedString {
-                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)) { append(e.store) }
-                        append(e.client)
-                    },
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 18.sp,
-                )
+                Column {
+                    if (isLast) {
+                        Text("Dernier scan", style = MaterialTheme.typography.labelLarge, color = Color(0xFF16794A))
+                    }
+                    Text(
+                        buildAnnotatedString {
+                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)) { append(e.store) }
+                            withStyle(SpanStyle(fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal)) { append(e.client) }
+                        },
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = if (isLast) 30.sp else 18.sp,
+                    )
+                }
                 Text(
                     SimpleDateFormat("dd/MM HH:mm:ss", Locale.FRANCE).format(Date(e.ts)),
                     style = MaterialTheme.typography.bodySmall,

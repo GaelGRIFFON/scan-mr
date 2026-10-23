@@ -13,11 +13,30 @@ android {
         applicationId = "fr.gael.scanclient"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
+        // Numéro de build GitHub : augmente à chaque exécution (1 en local)
+        versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "0.1"
     }
 
+    // Clé de signature fixe déposée dans le dépôt (voir workflow "Générer la clé de signature").
+    // Sans le fichier, Gradle retombe sur la clé debug habituelle.
+    val fixedKeystore = file("keystore/scanclient.jks")
+    val keystorePass = System.getenv("SCANCLIENT_KS_PASS")?.takeIf { it.isNotBlank() } ?: "scanclient2026"
+    signingConfigs {
+        if (fixedKeystore.exists()) {
+            create("fixed") {
+                storeFile = fixedKeystore
+                storePassword = keystorePass
+                keyAlias = "scanclient"
+                keyPassword = keystorePass
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (fixedKeystore.exists()) signingConfig = signingConfigs.getByName("fixed")
+        }
         release { isMinifyEnabled = false }
     }
     compileOptions {
