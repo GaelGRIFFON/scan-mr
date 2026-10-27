@@ -20,7 +20,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -60,10 +62,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -104,63 +108,84 @@ fun ScanScreen(vm: ScanViewModel) {
         if (scans.isNotEmpty()) listState.animateScrollToItem(0)
     }
 
-    Scaffold(snackbarHost = { SnackbarHost(snack) }) { pad ->
-        Column(Modifier.padding(pad).fillMaxSize()) {
-            CameraSection(vm, granted, status)
+    // Smartphone portrait : caméra en haut, liste dessous. Paysage (tablette ou téléphone) : caméra à gauche, liste à droite.
+    val cfg = LocalConfiguration.current
+    val landscape = cfg.screenWidthDp > cfg.screenHeightDp
+    val camHeight = (cfg.screenHeightDp * 0.36f).dp.coerceIn(220.dp, 420.dp)
 
-            if (tray.isNotEmpty()) {
-                Row(
-                    Modifier.fillMaxWidth().background(Ui.InfoBg).horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    tray.forEach { u ->
-                        Text("Magasin ${u.prefix} inconnu", color = Ui.Info, fontWeight = FontWeight.Bold)
-                        TextButton(onClick = { addStore = AddStoreRequest(u.prefix, u.client) }) { Text("Ajouter") }
-                        TextButton(onClick = { vm.dismissUnknown(u.prefix) }) { Text("Ignorer", color = Ui.Muted) }
-                    }
-                }
-            }
-
+    val trayContent: @Composable () -> Unit = {
+        if (tray.isNotEmpty()) {
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().background(Ui.InfoBg).horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(session?.name ?: "", style = MaterialTheme.typography.labelLarge, color = Ui.Muted)
-                    Text("${scans.size} code(s)", style = MaterialTheme.typography.titleMedium)
+                tray.forEach { u ->
+                    Text("Magasin ${u.prefix} inconnu", color = Ui.Info, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = { addStore = AddStoreRequest(u.prefix, u.client) }) { Text("Ajouter") }
+                    TextButton(onClick = { vm.dismissUnknown(u.prefix) }) { Text("Ignorer", color = Ui.Muted) }
                 }
-                TextButton(onClick = { addStore = AddStoreRequest("", null) }) { Text("+ Magasin") }
-                TextButton(onClick = { confirmEnd = true }) { Text("Terminer", color = Ui.Danger) }
             }
-            if (recap.isNotEmpty()) {
-                Text(
-                    recap.joinToString("  ·  ") { "${it.store} ×${it.n}" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Ui.Muted,
-                    modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp),
-                )
-            }
-            HorizontalDivider()
+        }
+    }
 
-            LazyColumn(Modifier.weight(1f), state = listState) {
-                items(scans, key = { it.id }) { e ->
-                    ScanRow(
-                        e,
-                        isLast = e.id == newestId,
-                        onClick = { editing = e },
-                        onDelete = {
-                            vm.deleteScan(e)
-                            scope.launch {
-                                val r = snack.showSnackbar("${e.full} supprimé", "Annuler", duration = SnackbarDuration.Short)
-                                if (r == SnackbarResult.ActionPerformed) vm.restoreScan(e)
-                            }
-                        },
-                    )
-                    HorizontalDivider()
+    val listContent: @Composable ColumnScope.() -> Unit = {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(session?.name ?: "", style = MaterialTheme.typography.labelLarge, color = Ui.Muted)
+                Text("${scans.size} code(s)", style = MaterialTheme.typography.titleMedium)
+            }
+            TextButton(onClick = { addStore = AddStoreRequest("", null) }) { Text("+ Magasin") }
+            TextButton(onClick = { confirmEnd = true }) { Text("Terminer", color = Ui.Danger) }
+        }
+        if (recap.isNotEmpty()) {
+            Text(
+                recap.joinToString("  ·  ") { "${it.store} ×${it.n}" },
+                style = MaterialTheme.typography.bodySmall,
+                color = Ui.Muted,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 4.dp),
+            )
+        }
+        HorizontalDivider()
+
+        LazyColumn(Modifier.weight(1f), state = listState) {
+            items(scans, key = { it.id }) { e ->
+                ScanRow(
+                    e,
+                    isLast = e.id == newestId,
+                    onClick = { editing = e },
+                    onDelete = {
+                        vm.deleteScan(e)
+                        scope.launch {
+                            val r = snack.showSnackbar("${e.full} supprimé", "Annuler", duration = SnackbarDuration.Short)
+                            if (r == SnackbarResult.ActionPerformed) vm.restoreScan(e)
+                        }
+                    },
+                )
+                HorizontalDivider()
+            }
+        }
+    }
+
+    Scaffold(snackbarHost = { SnackbarHost(snack) }) { pad ->
+        if (landscape) {
+            Row(Modifier.padding(pad).fillMaxSize()) {
+                CameraSection(vm, granted, status, Modifier.weight(1f).fillMaxHeight())
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    trayContent()
+                    listContent()
                 }
+            }
+        } else {
+            Column(Modifier.padding(pad).fillMaxSize()) {
+                CameraSection(vm, granted, status, Modifier.fillMaxWidth().height(camHeight))
+                trayContent()
+                listContent()
             }
         }
     }
@@ -214,11 +239,11 @@ fun ScanScreen(vm: ScanViewModel) {
 }
 
 @Composable
-private fun CameraSection(vm: ScanViewModel, granted: Boolean, status: Status) {
+private fun CameraSection(vm: ScanViewModel, granted: Boolean, status: Status, modifier: Modifier) {
     var camera by remember { mutableStateOf<Camera?>(null) }
     var torch by remember { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxWidth().height(260.dp).background(Color.Black)) {
+    Box(modifier.background(Color.Black)) {
         if (granted) {
             CameraPreview(vm, Modifier.fillMaxSize()) { camera = it }
         } else {
@@ -305,8 +330,14 @@ private fun CameraPreview(vm: ScanViewModel, modifier: Modifier, onCamera: (Came
                     )
                 }
 
+            val selector = try {
+                if (provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) CameraSelector.DEFAULT_BACK_CAMERA
+                else CameraSelector.DEFAULT_FRONT_CAMERA
+            } catch (e: Exception) {
+                CameraSelector.DEFAULT_BACK_CAMERA
+            }
             provider.unbindAll()
-            onCamera(provider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis))
+            onCamera(provider.bindToLifecycle(activity, selector, preview, analysis))
         }, ContextCompat.getMainExecutor(c))
         previewView
     })
@@ -315,6 +346,7 @@ private fun CameraPreview(vm: ScanViewModel, modifier: Modifier, onCamera: (Came
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScanRow(e: ScanEntity, isLast: Boolean, onClick: () -> Unit, onDelete: () -> Unit) {
+    val wide = LocalConfiguration.current.screenWidthDp >= 600
     val state = rememberSwipeToDismissBoxState(confirmValueChange = {
         if (it == SwipeToDismissBoxValue.EndToStart) {
             onDelete(); true
@@ -343,7 +375,7 @@ private fun ScanRow(e: ScanEntity, isLast: Boolean, onClick: () -> Unit, onDelet
                     Text(
                         codeText(e.store, e.client, boldClient = isLast),
                         fontFamily = FontFamily.Monospace,
-                        fontSize = if (isLast) 30.sp else 18.sp,
+                        fontSize = if (isLast) (if (wide) 40.sp else 30.sp) else (if (wide) 22.sp else 18.sp),
                     )
                 }
                 Text(fmtTime(e.ts), style = MaterialTheme.typography.bodySmall)

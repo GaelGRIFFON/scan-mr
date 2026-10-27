@@ -1,6 +1,7 @@
 package fr.gael.scanclient
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,6 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -29,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
@@ -53,6 +58,26 @@ fun fmtTime(ts: Long): String = SimpleDateFormat("dd/MM HH:mm:ss", Locale.FRANCE
 fun codeText(store: String, client: String, boldClient: Boolean = false): AnnotatedString = buildAnnotatedString {
     withStyle(SpanStyle(color = Ui.Primary, fontWeight = FontWeight.Bold)) { append(store) }
     withStyle(SpanStyle(fontWeight = if (boldClient) FontWeight.Bold else FontWeight.Normal)) { append(client) }
+}
+
+/**
+ * Logo de marque : affiche `res/drawable-nodpi/<resName>.png` s'il existe, sinon le nom en texte.
+ * Résolu à l'exécution pour que l'app compile même sans les fichiers de logo.
+ */
+@Composable
+fun BrandLogo(resName: String, fallbackText: String, modifier: Modifier = Modifier, height: Dp = 48.dp) {
+    val ctx = LocalContext.current
+    val id = remember(resName) { ctx.resources.getIdentifier(resName, "drawable", ctx.packageName) }
+    if (id != 0) {
+        Image(
+            painter = painterResource(id),
+            contentDescription = fallbackText,
+            modifier = modifier.height(height),
+            contentScale = ContentScale.Fit,
+        )
+    } else {
+        Text(fallbackText, modifier = modifier, fontWeight = FontWeight.Bold, color = Ui.Muted)
+    }
 }
 
 @Composable

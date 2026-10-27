@@ -34,38 +34,38 @@ fun StoresScreen(vm: ScanViewModel) {
     var editing by remember { mutableStateOf<StoreEntity?>(null) }
     var importing by remember { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { vm.goHome() }) { Text("‹ Accueil") }
-            Text("Magasins", fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "Seuls les codes commençant par l'un de ces préfixes, suivis de chiffres, sont enregistrés.",
-                color = Ui.Muted,
-            )
-            BigButton("Ajouter un magasin", onClick = { adding = true })
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = { importing = true }) { Text("Coller une liste") }
-                TextButton(onClick = { ctx.startActivity(CsvExport.storesIntent(stores)) }, enabled = stores.isNotEmpty()) {
-                    Text("Partager la liste")
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { vm.goHome() }) { Text("‹ Accueil") }
+                Text("Magasins", fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Seuls les codes commençant par l'un de ces préfixes, suivis de chiffres, sont enregistrés.",
+                    color = Ui.Muted,
+                )
+                BigButton("Ajouter un magasin", onClick = { adding = true })
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { importing = true }) { Text("Coller une liste") }
+                    TextButton(onClick = { ctx.startActivity(CsvExport.storesIntent(stores)) }, enabled = stores.isNotEmpty()) {
+                        Text("Partager la liste")
+                    }
                 }
             }
+            HorizontalDivider()
         }
-        HorizontalDivider()
-        LazyColumn(Modifier.weight(1f)) {
-            items(stores, key = { it.prefix }) { st ->
-                Row(
-                    Modifier.fillMaxWidth().clickable { editing = st }.padding(horizontal = 16.dp, vertical = 14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(st.prefix, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ui.Primary)
-                    Text(
-                        if (st.clientLen != null) "${st.clientLen} chiffres" else "6 ou 7 chiffres",
-                        color = Ui.Muted,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                HorizontalDivider()
+        items(stores, key = { it.prefix }) { st ->
+            Row(
+                Modifier.fillMaxWidth().clickable { editing = st }.padding(horizontal = 16.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(st.prefix, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Ui.Primary)
+                Text(
+                    if (st.clientLen != null) "${st.clientLen} chiffres" else "6 ou 7 chiffres",
+                    color = Ui.Muted,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
+            HorizontalDivider()
         }
     }
 

@@ -9,6 +9,13 @@ App Android qui scanne (OCR hors ligne) les références client `<préfixe magas
 - **Sessions** : « Nouvelle session » → scan → « Terminer ». Les sessions passées se retrouvent sur l'accueil : export CSV, renommage, reprise, suppression.
 - Export CSV `;` UTF-8 : `session;horodatage;magasin;client;code` (Excel supprime les zéros de tête de la colonne client ; la colonne code est sûre).
 
+## Logos
+Déposer les logos (PNG ou WebP, fond transparent de préférence) dans `app/src/main/res/drawable-nodpi/` avec exactement ces noms :
+`logo_moulin_roty.png` et `logo_bonhomme_de_bois.png`. Sans fichier, l'accueil affiche le nom en texte.
+
+## Tablette / smartphone
+Rotation libre. Portrait : caméra en haut, liste dessous. Paysage : caméra à gauche, liste à droite. Les autres écrans restent dans une colonne centrée (640 dp max).
+
 ## Compilation (GitHub Actions)
 1. Lancer une fois le workflow **keystore** (génère `app/keystore/scanclient.jks`, à committer) : les mises à jour s'installent ensuite par-dessus l'ancienne version.
 2. Chaque push sur `main` lance **build** → APK dans les artefacts.

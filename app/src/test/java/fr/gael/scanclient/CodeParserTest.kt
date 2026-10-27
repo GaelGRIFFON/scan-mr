@@ -63,4 +63,20 @@ class CodeParserTest {
         assertTrue(CodeParser.read("ANTES0004485", stores) is Reading.Unknown)
         assertTrue(CodeParser.read("ANTES0004485", stores + StoreDef("ANTES")) is Reading.Match)
     }
+
+    @Test fun numericPrefixesFromSeedList() {
+        val s = listOf(
+            StoreDef("AL000", 7), StoreDef("ANT06", 7), StoreDef("BAY1", 7), StoreDef("LY000", 7),
+            StoreDef("LYON06"), StoreDef("ROQUE"), StoreDef("RO000", 7),
+        )
+        fun f(raw: String) = (CodeParser.read(raw, s) as? Reading.Match)?.full
+        assertEquals("AL0000007736", f("ALOO00007736"))
+        assertEquals("ANT060004485", f("ANTOB0004485"))
+        assertEquals("BAY10000981", f("BAY10000981"))
+        assertEquals("LY0000001216", f("LYOOO0001216"))
+        assertEquals("LYON060010953", f("LYOND60010953"))
+        // ROQUE (7 chiffres) et RO000 ne se confondent pas
+        assertEquals("ROQUE0005977", f("ROQUE0005977"))
+        assertEquals("RO0000005977", f("RO0000005977"))
+    }
 }

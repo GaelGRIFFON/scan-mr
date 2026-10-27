@@ -3,13 +3,17 @@ package fr.gael.scanclient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,11 +31,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -41,11 +47,54 @@ fun ScanApp(vm: ScanViewModel) {
     val screen by vm.screen.collectAsState()
     BackHandler(enabled = screen != Screen.Home) { vm.goHome() }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        when (screen) {
-            Screen.Home -> HomeScreen(vm)
-            Screen.Scan -> ScanScreen(vm)
-            Screen.Detail -> DetailScreen(vm)
-            Screen.Stores -> StoresScreen(vm)
+        if (screen == Screen.Scan) {
+            ScanScreen(vm)
+        } else {
+            // Tablette : on garde une colonne centrée, lisible, plutôt que des boutons de 1000 px de large
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                Box(Modifier.widthIn(max = 640.dp).fillMaxHeight()) {
+                    when (screen) {
+                        Screen.Home -> HomeScreen(vm)
+                        Screen.Detail -> DetailScreen(vm)
+                        Screen.Stores -> StoresScreen(vm)
+                        Screen.Scan -> Unit
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrandHeader() {
+    Column(
+        Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("Scan Code Client", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Ui.Primary, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
+        Surface(shape = RoundedCornerShape(50), color = Ui.InfoBg) {
+            Text(
+                "NPAI",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Ui.Info,
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        HorizontalDivider(Modifier.width(64.dp), thickness = 2.dp, color = Ui.Primary)
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "B2C Moulin Roty - Bonhomme de bois",
+            color = Ui.Muted,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
+            BrandLogo("logo_moulin_roty", "Moulin Roty")
+            BrandLogo("logo_bonhomme_de_bois", "Bonhomme de bois")
         }
     }
 }
@@ -58,12 +107,7 @@ private fun HomeScreen(vm: ScanViewModel) {
     val past = sessions.filter { it.endedAt != null }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Spacer(Modifier.height(32.dp))
-            Text("ScanClient", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Ui.Primary)
-            Text("Scannez les références clients, sans rien taper.", color = Ui.Muted)
-            Spacer(Modifier.height(8.dp))
-        }
+        item { BrandHeader() }
         item { BigButton("Nouvelle session", onClick = { vm.newSession() }) }
         if (open != null) {
             item {
@@ -126,38 +170,35 @@ private fun DetailScreen(vm: ScanViewModel) {
         return
     }
 
-    Column(Modifier.fillMaxSize()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { vm.goHome() }) { Text("‹ Accueil") }
-            Text(s.name, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "${fmtDateTime(s.createdAt)} · ${scans.size} code(s)",
-                color = Ui.Muted,
-            )
-            if (recap.isNotEmpty()) {
-                Text(recap.joinToString("  ·  ") { "${it.store} ×${it.n}" }, style = MaterialTheme.typography.bodyMedium)
-            }
-            BigButton("Exporter en CSV", onClick = {
-                scope.launch { vm.exportIntent()?.let { ctx.startActivity(it) } }
-            }, enabled = scans.isNotEmpty())
-            OutlineBigButton("Reprendre cette session", onClick = { vm.resumeSession(s.id) })
-            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = { rename = true }) { Text("Renommer") }
-                TextButton(onClick = { confirmDelete = true }) { Text("Supprimer", color = Ui.Danger) }
-            }
-        }
-        HorizontalDivider()
-        LazyColumn(Modifier.weight(1f)) {
-            items(scans, key = { it.id }) { e ->
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(codeText(e.store, e.client), fontFamily = FontFamily.Monospace, fontSize = 17.sp)
-                    Text(fmtTime(e.ts), style = MaterialTheme.typography.bodySmall, color = Ui.Muted)
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { vm.goHome() }) { Text("‹ Accueil") }
+                Text(s.name, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("${fmtDateTime(s.createdAt)} · ${scans.size} code(s)", color = Ui.Muted)
+                if (recap.isNotEmpty()) {
+                    Text(recap.joinToString("  ·  ") { "${it.store} ×${it.n}" }, style = MaterialTheme.typography.bodyMedium)
                 }
-                HorizontalDivider()
+                BigButton("Exporter en CSV", onClick = {
+                    scope.launch { vm.exportIntent()?.let { ctx.startActivity(it) } }
+                }, enabled = scans.isNotEmpty())
+                OutlineBigButton("Reprendre cette session", onClick = { vm.resumeSession(s.id) })
+                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { rename = true }) { Text("Renommer") }
+                    TextButton(onClick = { confirmDelete = true }) { Text("Supprimer", color = Ui.Danger) }
+                }
             }
+            HorizontalDivider()
+        }
+        items(scans, key = { it.id }) { e ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(codeText(e.store, e.client), fontFamily = FontFamily.Monospace, fontSize = 17.sp)
+                Text(fmtTime(e.ts), style = MaterialTheme.typography.bodySmall, color = Ui.Muted)
+            }
+            HorizontalDivider()
         }
     }
 

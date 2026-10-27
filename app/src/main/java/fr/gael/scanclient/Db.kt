@@ -16,11 +16,50 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-/** Liste de départ des préfixes de magasin (modifiable dans l'app). */
-val SEED_STORES = listOf(
-    "ALESI", "BAYONN", "BORD", "CAEN", "CHAU", "GRENO", "HAVRE", "LEVAL", "LILLE", "MALES",
-    "MULHO", "NANTE", "NIEL", "ORLE", "RENNE", "ROQUE", "SGEL", "STNAZA", "STRA", "TOUL",
-    "LYON02", "LYON06",
+/**
+ * Liste de départ des préfixes de magasin (modifiable dans l'app) : préfixe to nombre de chiffres du n° client
+ * (null = 6 ou 7). Les préfixes en "000" / "1" / "06"... correspondent aux courriers où le magasin est écrit ainsi.
+ */
+val SEED_STORES: List<Pair<String, Int?>> = listOf(
+    "AL000" to 7,
+    "ALESI" to null,
+    "ANT06" to 7,
+    "BAY1" to 7,
+    "BAYONN" to null,
+    "BORD" to null,
+    "CA000" to 7,
+    "CAEN" to null,
+    "CHAU" to null,
+    "GR000" to 7,
+    "GRENO" to null,
+    "HAVRE" to null,
+    "LA000" to 7,
+    "LAV53" to 7,
+    "LEVAL" to null,
+    "LI000" to 7,
+    "LILLE" to null,
+    "LY000" to 7,
+    "LYON02" to null,
+    "LYON06" to null,
+    "M0000" to 7,
+    "MA000" to 7,
+    "MALES" to null,
+    "MU000" to 7,
+    "MULHO" to null,
+    "NANTE" to null,
+    "NIEL" to null,
+    "NIORT" to 7,
+    "ORLE" to null,
+    "RE000" to 7,
+    "REIMS" to 7,
+    "RENNE" to null,
+    "RN000" to 7,
+    "RO000" to 7,
+    "ROQUE" to null,
+    "SGEL" to null,
+    "STNAZA" to null,
+    "STRA" to null,
+    "TOUL" to null,
 )
 
 @Entity(tableName = "sessions")
@@ -122,7 +161,7 @@ interface ScanDao {
     suspend fun deleteStore(prefix: String)
 }
 
-@Database(entities = [ScanEntity::class, SessionEntity::class, StoreEntity::class], version = 2, exportSchema = false)
+@Database(entities = [ScanEntity::class, SessionEntity::class, StoreEntity::class], version = 3, exportSchema = false)
 abstract class AppDb : RoomDatabase() {
     abstract fun dao(): ScanDao
 
@@ -130,7 +169,9 @@ abstract class AppDb : RoomDatabase() {
         @Volatile private var instance: AppDb? = null
 
         private fun seed(db: SupportSQLiteDatabase) {
-            SEED_STORES.forEach { db.execSQL("INSERT OR IGNORE INTO stores (prefix, clientLen) VALUES ('$it', NULL)") }
+            SEED_STORES.forEach { (p, len) ->
+                db.execSQL("INSERT OR IGNORE INTO stores (prefix, clientLen) VALUES ('$p', ${len ?: "NULL"})")
+            }
         }
 
         /** v1 (scans sans session) -> v2 : les anciens scans passent dans une session terminée "Session de test". */
@@ -156,9 +197,14 @@ abstract class AppDb : RoomDatabase() {
             }
         }
 
+        /** v2 -> v3 : pas de changement de schéma, ajoute les nouveaux préfixes de la liste de départ (sans toucher aux existants). */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) = seed(db)
+        }
+
         fun get(context: Context): AppDb = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDb::class.java, "scans.db")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) = seed(db)
                 })
